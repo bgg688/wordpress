@@ -140,7 +140,7 @@ install_php7(){
     green "==============="
     sleep 1
     wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-    wget https://rpms.remirepo.net/enterprise/remi-release-7.rpm
+    wget https://rpms.remirepo.net/enterprise/remi-release-7.rpm --no-check-certificate
     rpm -Uvh remi-release-7.rpm epel-release-latest-7.noarch.rpm --force --nodeps
     #sed -i "0,/enabled=0/s//enabled=1/" /etc/yum.repos.d/epel.repo
     yum -y install  unzip vim tcl expect curl socat
@@ -172,7 +172,7 @@ install_mysql(){
     #wget http://repo.mysql.com/mysql-community-release-el7-5.noarch.rpm
     wget https://repo.mysql.com/mysql80-community-release-el7-3.noarch.rpm
     rpm -ivh mysql80-community-release-el7-3.noarch.rpm --force --nodeps
-    yum -y install mysql-server
+    yum -y install mysql-server --nogpgcheck
     systemctl enable mysqld.service
     systemctl start  mysqld.service
     if [ `yum list installed | grep mysql-community | wc -l` -ne 0 ]; then
