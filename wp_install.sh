@@ -94,6 +94,7 @@ disable_selinux(){
     fi
     iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
     iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+    iptables -A INPUT -p tcp -m tcp --dport 44311 -j ACCEPT
     iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
     iptables -A INPUT -i lo -j ACCEPT
     iptables -P INPUT DROP
@@ -195,6 +196,10 @@ cat > ~/.my.cnf <<EOT
 user=root
 password="$originpasswd"
 EOT
+
+
+
+
     mysql  --connect-expired-password  -e "alter user 'root'@'localhost' identified by '$mysqlpasswd';"
     systemctl restart mysqld
     sleep 5s
@@ -203,6 +208,13 @@ cat > ~/.my.cnf <<EOT
 user=root
 password="$mysqlpasswd"
 EOT
+
+cat > /root/123.json <<-EOF
+[mysql]
+user=root
+password="$mysqlpasswd"
+EOF
+
     mysql  --connect-expired-password  -e "create database wordpress_db;"
 
 
