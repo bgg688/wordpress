@@ -94,7 +94,6 @@ disable_selinux(){
     fi
     iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
     iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
-    iptables -A INPUT -p tcp -m tcp --dport 44311 -j ACCEPT
     iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
     iptables -A INPUT -i lo -j ACCEPT
     iptables -P INPUT DROP
@@ -108,12 +107,10 @@ disable_selinux(){
 
 check_domain(){
     green "========================="
-    yellow "请先输入绑定到本VPS的域名，回车后再输入trojan使用的域名"
-    yellow "比如先输入wp.example.com用来访问博客，再输tr.wp.example.com来使用trojan"
-    yellow "安装时请关闭CDN"
+    yellow "请输入绑定到本VPS的域名"
+    yellow "   安装时请关闭CDN"
     green "========================="
     read your_domain
-	read trojan_domain
     real_addr=`ping ${your_domain} -c 1 | sed '1{s/[^(]*(//;s/).*//;q}'`
     local_addr=`curl ipv4.icanhazip.com`
     if [ $real_addr == $local_addr ] ; then
@@ -121,7 +118,6 @@ check_domain(){
         green "域名解析正常，开始安装wordpress"
         green "============================="
         sleep 1s
-		
         download_wp
         install_php7
         install_mysql
@@ -199,10 +195,6 @@ cat > ~/.my.cnf <<EOT
 user=root
 password="$originpasswd"
 EOT
-
-
-
-
     mysql  --connect-expired-password  -e "alter user 'root'@'localhost' identified by '$mysqlpasswd';"
     systemctl restart mysqld
     sleep 5s
@@ -211,13 +203,6 @@ cat > ~/.my.cnf <<EOT
 user=root
 password="$mysqlpasswd"
 EOT
-
-cat > /root/mysqlpassword.json <<-EOF
-[mysql]
-user=root
-password="$mysqlpasswd"
-EOF
-
     mysql  --connect-expired-password  -e "create database wordpress_db;"
 
 
@@ -254,17 +239,6 @@ install_nginx(){
         mysql_status=1
     fi
 
-	mkdir /wpkey
-	mkdir /trkey
-	curl https://get.acme.sh | sh
-	~/.acme.sh/acme.sh --register-account -m xxx@xxxx.com
-	~/.acme.sh/acme.sh  --issue -d $your_domain   --standalone
-	~/.acme.sh/acme.sh --installcert -d $your_domain --key-file /etc/nginx/ssl/wp.key --fullchain-file /etc/nginx/ssl/wp.crt
-	sleep 15
-	~/.acme.sh/acme.sh --register-account -m xxxx@xxx.com
-	~/.acme.sh/acme.sh  --issue -d $trojan_domain   --standalone
-	~/.acme.sh/acme.sh --installcert -d $trojan_domain --key-file /etc/nginx/ssl/trojan.key --fullchain-file /etc/nginx/ssl/trojan.crt
-
 cat > /etc/nginx/nginx.conf <<-EOF
 user  nginx;
 worker_processes  1;
@@ -273,39 +247,14 @@ pid        /var/run/nginx.pid;
 events {
     worker_connections  1024;
 }
- 
-stream { 
-# 这里就是 SNI 识别，将域名映射成一个配置名，请修改自己的一级域名 
-  map $ssl_preread_server_name $backend_name { 
-    $your_domain web; 
-    $trojan_domain trojan; 
-# 域名都不匹配情况下的默认值 
-    default web; 
-  } 
-# web，配置转发详情 
-  upstream web { 
-    server 127.0.0.1:10110; 
-  } 
-# trojan，配置转发详情 
-  upstream trojan { 
-    server 127.0.0.1:44333;
-  } 
-# 监听 443 并开启 ssl_preread
-  server { 
-    listen 443 reuseport; 
-    listen [::]:443 reuseport; 
-    proxy_pass $backend_name; 
-    ssl_preread on; 
-  }
-}
- 
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
-    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
-                      '$status $body_bytes_sent "$http_referer" '
-                      '"$http_user_agent" "$http_x_forwarded_for"';
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
     access_log  /var/log/nginx/access.log  main;
+    error_log /var/log/nginx/error.log error;
     sendfile        on;
     #tcp_nopush     on;
     keepalive_timeout  120;
@@ -315,100 +264,53 @@ http {
 }
 EOF
 
-
+    curl https://get.acme.sh | sh
+	~/.acme.sh/acme.sh --register-account -m xxxx@xxxx.com
+	~/.acme.sh/acme.sh  --issue -d $your_domain   --standalone
+    ~/.acme.sh/acme.sh  --installcert  -d  $your_domain   \
+        --key-file   /etc/nginx/ssl/$your_domain.key \
+        --fullchain-file /etc/nginx/ssl/fullchain.cer
 
 cat > /etc/nginx/conf.d/default.conf<<-EOF
 server {
-    listen 80;
-    server_name $your_domain;
-    if ($host ~* "$your_domain$") {
-    rewrite ^/(.*)$ https://$your_domain/ permanent;
-    }
+    listen 80 default_server;
+    server_name _;
+    return 404;  
 }
- 
 server {
-    listen 10110 ssl http2;
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_certificate /etc/nginx/ssl/fullchain.cer; 
+    ssl_certificate_key /etc/nginx/ssl/$your_domain.key;
+    return 404;
+}
+server { 
+    listen       80;
+    server_name  $your_domain;
+    rewrite ^(.*)$  https://\$host\$1 permanent; 
+}
+server {
+    listen 443 ssl http2;
     server_name $your_domain;
     root /usr/share/nginx/html;
     index index.php index.html;
-    ssl_certificate /etc/nginx/ssl/wp.crt; 
-    ssl_certificate_key /etc/nginx/ssl/wp.key;
+    ssl_certificate /etc/nginx/ssl/fullchain.cer; 
+    ssl_certificate_key /etc/nginx/ssl/$your_domain.key;
     ssl_stapling on;
     ssl_stapling_verify on;
     add_header Strict-Transport-Security "max-age=31536000";
     access_log /var/log/nginx/hostscube.log combined;
     location ~ \.php$ {
-    	fastcgi_pass 127.0.0.1:9000;
-    	fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    	include fastcgi_params;
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        include fastcgi_params;
     }
     location / {
-       try_files $uri $uri/ /index.php?$args;
+       try_files \$uri \$uri/ /index.php?\$args;
     }
 }
 EOF
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/trojan-gfw/trojan-quickstart/master/trojan-quickstart.sh)"
-	sleep 5
-	systemctlrestart trojan
-	sleep 5
-	systemctl enable trojan
-	systemctl enable trojan.service
-	systemctl stop trojan
-	
-	rm -f /usr/local/etc/trojan/config.json
-	sleep 2
-cat > /usr/local/etc/trojan/config.json<<-EOF
-{
-    "run_type": "server",
-    "local_addr": "127.0.0.1",
-    "local_port": 44333,
-    "remote_addr": "127.0.0.1",
-    "remote_port": 80,
-    "password": [
-        "passwordx"
-    ],
-    "log_level": 1,
-    "ssl": {
-        "cert": "/etc/nginx/ssl/trojan.crt",
-        "key": "/etc/nginx/ssl/trojan.key",
-        "key_password": "",
-        "cipher": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384",
-        "cipher_tls13": "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384",
-        "prefer_server_cipher": true,
-        "alpn": [
-            "http/1.1"
-        ],
-        "alpn_port_override": {
-            "h2": 81
-        },
-        "reuse_session": true,
-        "session_ticket": false,
-        "session_timeout": 600,
-        "plain_http_response": "",
-        "curves": "",
-        "dhparam": ""
-    },
-    "tcp": {
-        "prefer_ipv4": false,
-        "no_delay": true,
-        "keep_alive": true,
-        "reuse_port": false,
-        "fast_open": false,
-        "fast_open_qlen": 20
-    },
-    "mysql": {
-        "enabled": false,
-        "server_addr": "127.0.0.1",
-        "server_port": 3306,
-        "database": "trojan",
-        "username": "trojan",
-        "password": "",
-        "key": "",
-        "cert": "",
-        "ca": ""
-    }
-}
-EOF
+
 }
 
 
@@ -425,7 +327,10 @@ config_php(){
     sed -i "s/pm.start_servers = 5/pm.start_servers = 3/;s/pm.min_spare_servers = 5/pm.min_spare_servers = 3/;s/pm.max_spare_servers = 35/pm.max_spare_servers = 8/;" /etc/opt/remi/php74/php-fpm.d/www.conf
     systemctl restart php74-php-fpm.service
     systemctl restart nginx.service
-
+    ~/.acme.sh/acme.sh  --issue --force  -d $your_domain  --nginx
+    ~/.acme.sh/acme.sh  --installcert  -d  $your_domain   \
+        --key-file   /etc/nginx/ssl/$your_domain.key \
+        --fullchain-file /etc/nginx/ssl/fullchain.cer \
         --reloadcmd  "systemctl restart nginx"	
 
 }
@@ -472,14 +377,10 @@ install_wp(){
     chown -R apache:apache /usr/share/nginx/html/
     #chmod 775 apache:apache /usr/share/nginx/html/ -Rf
     chmod -R 775 /usr/share/nginx/html/wp-content
-    
-    systemctl restart trojan.service
-    systemctl restart trojan
-    green "=================================================================="
+    green "==========================================================="
     green " WordPress服务端配置已完成，请打开浏览器访问您的域名进行前台配置"
     green " 数据库密码等信息参考文件：/usr/share/nginx/html/wp-config.php"
-	green " trojan启动，初始密码passwordx，可在/usr/local/etc/trojan/config.json查改"
-    green "=================================================================="
+    green "==========================================================="
 }
 
 uninstall_wp(){
