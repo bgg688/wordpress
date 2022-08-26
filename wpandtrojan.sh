@@ -259,11 +259,11 @@ install_nginx(){
 	curl https://get.acme.sh | sh
 	~/.acme.sh/acme.sh --register-account -m xxx@xxxx.com
 	~/.acme.sh/acme.sh  --issue -d $your_domain   --standalone
-	~/.acme.sh/acme.sh --installcert -d $your_domain --key-file /wpkey/$your_domain.key --fullchain-file /wpkey/fullchain.cer
+	~/.acme.sh/acme.sh --installcert -d $your_domain --key-file /etc/nginx/ssl/wp.key --fullchain-file /etc/nginx/ssl/wp.crt
 	sleep 15
 	~/.acme.sh/acme.sh --register-account -m xxxx@xxx.com
 	~/.acme.sh/acme.sh  --issue -d $trojan_domain   --standalone
-	~/.acme.sh/acme.sh --installcert -d $trojan_domain --key-file /wpkey/$trojan_domain.key --fullchain-file /trkey/fullchain.cer
+	~/.acme.sh/acme.sh --installcert -d $trojan_domain --key-file /etc/nginx/ssl/trojan.key --fullchain-file /etc/nginx/ssl/trojan.crt
 
 cat > /etc/nginx/nginx.conf <<-EOF
 user  nginx;
@@ -331,8 +331,8 @@ server {
     server_name $your_domain;
     root /usr/share/nginx/html;
     index index.php index.html;
-    ssl_certificate /wpkey/fullchain.cer; 
-    ssl_certificate_key /wpkey/$your_domain.key;
+    ssl_certificate /etc/nginx/ssl/wp.crt; 
+    ssl_certificate_key /etc/nginx/ssl/wp.key;
     ssl_stapling on;
     ssl_stapling_verify on;
     add_header Strict-Transport-Security "max-age=31536000";
@@ -347,11 +347,14 @@ server {
     }
 }
 EOF
-
-	sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/trojan-gfw/trojan-quickstart/master/trojan-quickstart.sh)"
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/trojan-gfw/trojan-quickstart/master/trojan-quickstart.sh)"
 	sleep 5
-	systemctl enable trojan   #设置Trojan开启自动启动
+	systemctlrestart trojan
+	sleep 5
+	systemctl enable trojan
+	systemctl enable trojan.service
 	systemctl stop trojan
+	
 	rm -f /usr/local/etc/trojan/config.json
 	sleep 2
 cat > /usr/local/etc/trojan/config.json<<-EOF
@@ -366,8 +369,8 @@ cat > /usr/local/etc/trojan/config.json<<-EOF
     ],
     "log_level": 1,
     "ssl": {
-        "cert": "/trkey/fullchain.cer",
-        "key": "/trkey/$trojan_domain.key",
+        "cert": "/etc/nginx/ssl/trojan.crt",
+        "key": "/etc/nginx/ssl/trojan.key",
         "key_password": "",
         "cipher": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384",
         "cipher_tls13": "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384",
@@ -469,8 +472,9 @@ install_wp(){
     chown -R apache:apache /usr/share/nginx/html/
     #chmod 775 apache:apache /usr/share/nginx/html/ -Rf
     chmod -R 775 /usr/share/nginx/html/wp-content
-	systemctl restart trojan.service
-	systemctl restart trojan
+    
+    systemctl restart trojan.service
+    systemctl restart trojan
     green "=================================================================="
     green " WordPress服务端配置已完成，请打开浏览器访问您的域名进行前台配置"
     green " 数据库密码等信息参考文件：/usr/share/nginx/html/wp-config.php"
