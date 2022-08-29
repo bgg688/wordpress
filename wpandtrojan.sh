@@ -92,8 +92,10 @@ disable_selinux(){
     else
         iptables -A INPUT -p tcp -m tcp --dport ${SSH_PORT} -j ACCEPT
     fi
+    iptables -A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
     iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
     iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+    iptables -A INPUT -p tcp -m tcp --dport 62222 -j ACCEPT
     iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
     iptables -A INPUT -i lo -j ACCEPT
     iptables -P INPUT DROP
@@ -111,6 +113,7 @@ check_domain(){
     yellow "   安装时请关闭CDN"
     green "========================="
     read your_domain
+    read tr_domain
     real_addr=`ping ${your_domain} -c 1 | sed '1{s/[^(]*(//;s/).*//;q}'`
     local_addr=`curl ipv4.icanhazip.com`
     if [ $real_addr == $local_addr ] ; then
@@ -267,9 +270,13 @@ EOF
     curl https://get.acme.sh | sh
 	~/.acme.sh/acme.sh --register-account -m xxxx@xxxx.com
 	~/.acme.sh/acme.sh  --issue -d $your_domain   --standalone
+	~/.acme.sh/acme.sh  --issue -d $tr_domain   --standalone
     ~/.acme.sh/acme.sh  --installcert  -d  $your_domain   \
         --key-file   /etc/nginx/ssl/$your_domain.key \
         --fullchain-file /etc/nginx/ssl/fullchain.cer
+    ~/.acme.sh/acme.sh  --installcert  -d  $tr_domain   \
+        --key-file   /root/$tr_domain.key \
+        --fullchain-file /root/fullchain.cer
 
 cat > /etc/nginx/conf.d/default.conf<<-EOF
 server {
