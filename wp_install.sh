@@ -262,8 +262,8 @@ server {
 server {
     listen 443 ssl default_server;
     server_name _;
-    ssl_certificate /etc/nginx/ssl/fullchain.cer; 
-    ssl_certificate_key /etc/nginx/ssl/$your_domain.key;
+    ssl_certificate /full_chain.pem; 
+    ssl_certificate_key /private.key;
     return 404;
 }
 server { 
@@ -276,8 +276,8 @@ server {
     server_name $your_domain;
     root /usr/share/nginx/html;
     index index.php index.html;
-    ssl_certificate /etc/nginx/ssl/fullchain.cer; 
-    ssl_certificate_key /etc/nginx/ssl/$your_domain.key;
+    ssl_certificate /full_chain.pem; 
+    ssl_certificate_key /private.key;
     ssl_stapling on;
     ssl_stapling_verify on;
     add_header Strict-Transport-Security "max-age=31536000";
