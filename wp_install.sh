@@ -81,29 +81,7 @@ disable_selinux(){
         #firewall-cmd --reload
         systemctl stop firewalld
         systemctl disable firewalld
-    fi
-    yum install -y iptables-services
-    systemctl start iptables
-    systemctl enable iptables
-    iptables -F
-    SSH_PORT=$(awk '$1=="Port" {print $2}' /etc/ssh/sshd_config)
-    if [ ! -n "$SSH_PORT" ]; then
-        iptables -A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
-    else
-        iptables -A INPUT -p tcp -m tcp --dport ${SSH_PORT} -j ACCEPT
-    fi
-    iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
-    iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
-    iptables -A INPUT -p tcp -m tcp --dport 44311 -j ACCEPT
-    iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
-    iptables -A INPUT -i lo -j ACCEPT
-    iptables -P INPUT DROP
-    iptables -P FORWARD DROP
-    iptables -P OUTPUT ACCEPT
-    service iptables save
-    green "====================================================================="
-    green "安全起见，iptables仅开启ssh,http,https端口，如需开放其他端口请自行放行"
-    green "====================================================================="
+    fi    
 }
 
 check_domain(){
@@ -275,13 +253,6 @@ http {
     include /etc/nginx/conf.d/*.conf;
 }
 EOF
-
-   	~/.acme.sh/acme.sh --register-account -m xxxx@xxxx.com
-    ~/.acme.sh/acme.sh  --issue -d $your_domain   --standalone
-    ~/.acme.sh/acme.sh  --installcert  -d  $your_domain   \
-        --key-file   /etc/nginx/ssl/$your_domain.key \
-        --fullchain-file /etc/nginx/ssl/fullchain.cer
-
 cat > /etc/nginx/conf.d/default.conf<<-EOF
 server {
     listen 80 default_server;
@@ -338,10 +309,7 @@ config_php(){
     sed -i "s/pm.start_servers = 5/pm.start_servers = 3/;s/pm.min_spare_servers = 5/pm.min_spare_servers = 3/;s/pm.max_spare_servers = 35/pm.max_spare_servers = 8/;" /etc/opt/remi/php74/php-fpm.d/www.conf
     systemctl restart php74-php-fpm.service
     systemctl restart nginx.service
-    ~/.acme.sh/acme.sh  --issue --force  -d $your_domain  --nginx
-    ~/.acme.sh/acme.sh  --installcert  -d  $your_domain   \
-        --key-file   /etc/nginx/ssl/$your_domain.key \
-        --fullchain-file /etc/nginx/ssl/fullchain.cer \
+ 
         --reloadcmd  "systemctl restart nginx"	
 
 }
